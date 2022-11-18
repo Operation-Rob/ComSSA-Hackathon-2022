@@ -1,25 +1,34 @@
+# Assumptions
+# Orbits are circular
+# There's no other objects in solar system which may impact gravitational fields
+# Simulation isn't perfect since velocity and acceleration are really only updated after heaps of seconds
+# Objects other than the rocket are only affected by the gravity of the sun (will change later)
+
 import pygame as pg
 from math import *
 from consts import *
 
 
+
 # Any object we'll be considering in the physics simulation
 class SpaceObject(object):
 	def __init__(self, name="UFO", x_pos=0, y_pos=0, x_vel=0, y_vel=0, mass=1e24, radius=1e7, cam=None, colour=0xffff00, au_mag=0, angle=0, period_days=0):
+		assert cam is not None
 		self.name = name
-		if x_pos or y_pos:
-			self.pos = [ x_pos, y_pos ] # In meters
+		if au_mag != 0:
+			r = au_mag * AU
+			self.pos = [ r * cos(angle), r * sin(angle) ]
 		else:
-			self.pos = [ au_mag * AU * cos(angle), au_mag * AU * sin(angle) ]
+			self.pos = [ x_pos, y_pos ] # In meters
 		self.vel = [ x_vel, y_vel ]     # In meters/sec
 		self.mass = mass                # In kg
 		self.radius = radius            # In meters
 		self.colour = colour
-		assert cam is not None
 		self.cam = cam
-		if period_days > 0:
-			v = 2 * pi * au_mag / (period_days * SECS_IN_A_DAY)
-			self.vel = [ v * cos(angle + 90 % 360), v * sin(angle + 90 % 360) ] # Tangent line to point on circle
+		if period_days > 0 and au_mag != 0:
+			r = au_mag * AU
+			v = 2 * pi * r / (period_days * SECS_IN_A_DAY) # v=(2*pi*r)/T
+			self.vel = [ v * cos((angle + 90) % 360), v * sin((angle + 90) % 360) ] # Tangent line to point on circle TODO: verify
 
 	@property
 	def coords(self):
@@ -51,10 +60,11 @@ class SpaceObject(object):
 		"""
 		Updates the position of the SpaceObject after time `time`, potentially with acceleration (a_x, a_y) changing velocity
 		"""
+		# s = ut + 0.5at^2
 		# v = u + at
-		# s = ut + 0.5at^2 (???)
+		# TODO: verify this is how you're supposed to implement position changing
 		self.pos[0] += self.vel[0] * time + accel[0] * time**2 / 2
-		self.pos[1] += self.vel[1] * time + accel[0] * time**2 / 2
+		self.pos[1] += self.vel[1] * time + accel[1] * time**2 / 2
 		self.vel[0] += accel[0] * time
 		self.vel[1] += accel[1] * time
 		#self.pos[0] += time * self.vel[0]
@@ -72,20 +82,20 @@ class SpaceObject(object):
 		Gravitational pull from self to some other SpaceObject (force; Newtons)
 		"""
 		r = self.dist_to(object2)
-		if r == 0: # Shouldn't occur
+		if r < DIST_THRESHOLD: # Shouldn't occur
 			if DEBUG:
-				print(f"{self.name} has collided with {object2.name}")
+				print(f"{self.name} has essentially collided with {object2.name}")
 			return 0 # Just say there's no force acting on it
-		return G * (self.mass * object2.mass) / (r**2)
+		return G * (self.mass * object2.mass) / (r**2) # F_G = G(m1m2/r^2)
 	
 	def accel_to(self, object2):
 		"""
-		Acceleration from self towards some other SpaceObject caused by gravitational pull (m/s^2)
+		Acceleration from self towards some other SpaceObject caused by gravitational pull (acceleration; m/s^2)
 		"""
 		r = self.dist_to(object2)
-		if r == 0: # Shouldn't occur
+		if r < DIST_THRESHOLD: # Shouldn't occur
 			if DEBUG:
-				print(f"{self.name} has collided with {object2.name}")
+				print(f"{self.name} has essentially collided with {object2.name}")
 			return 0 # Just say there's no force acting on it
 		return G * object2.mass / (r**2) # a=F/m
 	
@@ -101,26 +111,36 @@ class SpaceObject(object):
 			dist = self.dist_to(so)
 			accel = self.accel_to(so)
 			if dist == 0: # This shouldn't occur
-				a[0] += 0
-				a[1] += 0
+				a = [ None, None ]
+				break
 			else:
-				a[0] += accel / dist * self.coords_rel_to(so)[0] # TODO: verify
+				a[0] += accel / dist * self.coords_rel_to(so)[0] # TODO: verify; accel/dist normalises it, then multiply by x-distance or y-distance
 				a[1] += accel / dist * self.coords_rel_to(so)[1] #
 		return a
+
 
 	# Pygame related functions
 	@property
 	def pos_on_screen(self):
+		"""
+		Shifts position of the SpaceObject to somewhere on (or off) the screen
+		"""
 		w, h = pg.display.get_surface().get_size()
 		factor = min(w, h) * self.cam.zoom / (AU * MAX_AU)
-		return ((factor * (self.pos[0] - self.cam.pos[0]) + w) // 2, (factor * (self.pos[1] - self.cam.pos[1]) + h) // 2) # FIXME: make it fit the screen, and have nothing negative of course
+		return ((factor * (self.pos[0] - self.cam.pos[0]) + w) // 2, # FIXME: make it fit the screen, and have nothing negative of course
+		        (factor * (self.pos[1] - self.cam.pos[1]) + h) // 2) #
+
 	@property
 	def on_screen(self):
 		return True #self.pos_on_screen[0] <= w and self.pos_on_screen[0] >= 0 and self.pos_on_screen[1] <= h and self.pos_on_screen[1] >= 0
 	@property
 	def size_on_screen(self):
-		return (self.cam.zoom * self.radius)**(1/8)
+		return (self.cam.zoom * self.radius)**(1/8) # Just some flimsy calculation to make the sun not incredibly larger than the others. TODO will improve later
+
 	def draw(self):
+		"""
+		Draws the SpaceObject to the PyGame screen
+		"""
 		w, h = pg.display.get_surface().get_size()
 		if self.on_screen:
 			pg.draw.circle(pg.display.get_surface(), self.colour, self.pos_on_screen, self.size_on_screen)
@@ -151,6 +171,7 @@ class Rocket(SpaceObject):
 		Changes the rocket class's mass property. Will need to be run each time `time` changes
 		"""
 		self.mass = self.total_rocket_mass(time)
+
 
 # Data about the camera
 class Camera(object):
@@ -214,19 +235,27 @@ def simulate(delta_t_ms, total_ms, so_list, cam):
 	Make all of the objects accelerate each other
 	"""
 	num_objs = len(so_list)
-	time_passed = delta_t_ms / 1000
-	total_time_passed = total_ms / 1000
-
+	time_passed = delta_t_ms / 1000 * SECS_IN_A_DAY * DAYS_PER_FRAME / ITERATIONS_PER_FRAME     # (Real-world) time which will pass in this one frame (divided by ITERATIONS_PER_FRAME)
+	total_time_passed = total_ms / 1000 * SECS_IN_A_DAY * DAYS_PER_FRAME / ITERATIONS_PER_FRAME # Total (real-world) time which has passed since the start of the program (divided by ITERATIONS_PER_FRAME)
 	accelerations = [ [ 0, 0 ] ] * num_objs
-	for	i in range(num_objs):
-		accelerations[i] = so_list[i].net_accel_from(so_list)
-	# Update positions
-	for i in range(num_objs):
-		so_list[i].update_pos(time_passed, accelerations[i])
 
-	rocket.update_mass(total_time_passed) # Update rocket's fuel
+	# Rather than doing time_passed = delta_t_ms / 1000 * SECS_IN_A_DAY, execute it second-by-second so it's more accurate
+	for iteration_num in range(ITERATIONS_PER_FRAME):
+		for i in range(num_objs):
+			#accelerations[i] = so_list[i].net_accel_from(so_list)
+			accelerations[i] = so_list[i].net_accel_from([ sun ]) # FIXME: (fix later; once physics are fixed) for now, just assume the only force acting on anything is due to the sun
 
-	cam.goto(earth.pos)
+		# Update positions
+		for i in range(num_objs):
+			if accelerations[i] == [ None, None ]: # Attempt to make it not slingshot if it gets too close
+				so_list[i].vel = [ 0, 0 ] # Null velocity
+			else:
+				so_list[i].update_pos(time_passed, accelerations[i])
+
+		rocket.update_mass(total_time_passed) # Update rocket's fuel
+
+	#cam.goto(earth.pos)
+	cam.goto(sun.pos)
 
 def run():
 	camera = Camera()
@@ -239,13 +268,13 @@ def run():
 	running = True
 	while running:
 		clock.tick(FPS)
-		window.fill(0x000000)
+		window.fill(BLACK)
 
 		simulate(clock.get_time(), pg.time.get_ticks(), space_objects, camera)
 		for so in space_objects:
 			so.draw()
 
-		if camera.zoom < 15: # Zoom in initially
+		if camera.zoom < 10: # Zoom in initially
 			camera.zoom_by(1.01)
 
 		pg.display.update()
