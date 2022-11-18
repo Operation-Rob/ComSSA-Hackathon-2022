@@ -2,7 +2,7 @@
 # Orbits are circular
 # There's no other objects in solar system which may impact gravitational fields
 # Simulation isn't perfect since velocity and acceleration are really only updated after heaps of seconds
-# Objects other than the rocket are only affected by the gravity of the sun (will change later)
+# Relativity doesn't exist
 
 import pygame as pg
 from math import *
@@ -10,9 +10,47 @@ from consts import *
 
 
 
+# For the rings
+class Orbit(object):
+	def __init__(self, name="UFO orbit", au_mag=0, colour=0xffff00, centre=None, cam=None):
+		assert centre is not None
+		assert cam is not None
+		self.centre = centre
+		self.cam = cam
+		self.name = name
+		self.radius = au_mag * AU
+		self.colour = darken(colour, ORBIT_DARKEN)
+
+	@property
+	def pos_on_screen(self):
+		"""
+		Shifts position of the SpaceObject to somewhere on (or off) the screen
+		"""
+		w, h = pg.display.get_surface().get_size()
+		factor = min(w, h) * self.cam.zoom / (AU * MAX_AU)
+		return ((factor * (self.centre.pos[0] - self.cam.pos[0]) + w) // 2, # FIXME: readjust
+		        (factor * (self.centre.pos[1] - self.cam.pos[1]) + h) // 2) #
+
+	@property
+	def on_screen(self):
+		return True #self.pos_on_screen[0] <= w and self.pos_on_screen[0] >= 0 and self.pos_on_screen[1] <= h and self.pos_on_screen[1] >= 0
+	@property
+	def size_on_screen(self):
+		w, h = pg.display.get_surface().get_size()
+		factor = min(w, h) * self.cam.zoom / (AU * MAX_AU)
+		return self.radius * factor / 2
+
+	def draw(self):
+		"""
+		Draws the orbit line to the PyGame screen
+		"""
+		if self.on_screen:
+			pg.draw.circle(pg.display.get_surface(), self.colour, self.pos_on_screen, self.size_on_screen, width=ORBIT_WIDTH)
+
+
 # Any object we'll be considering in the physics simulation
 class SpaceObject(object):
-	def __init__(self, name="UFO", x_pos=0, y_pos=0, x_vel=0, y_vel=0, mass=1e24, radius=1e7, cam=None, colour=0xffff00, au_mag=0, angle=0, period_days=0):
+	def __init__(self, name="UFO", x_pos=0, y_pos=0, x_vel=0, y_vel=0, mass=1e24, radius=1e7, colour=0xffff00, cam=None, au_mag=0, angle=0, period_days=0):
 		assert cam is not None
 		self.cam = cam
 		self.name = name
@@ -34,7 +72,7 @@ class SpaceObject(object):
 			if False: # Incorrect method
 				v = 2 * pi * r / (period_days * SECS_IN_A_DAY) # v = (2*pi*r)/T
 			else:
-				v = sqrt(G * SUN_M / r) # From both F_g = G(m1m2/r^2) and a=v^2/r
+				v = sqrt(G * SUN_M / r) # From both F_g = G(m1m2/r^2) and a = v^2/r
 			self.vel = [ v * cos(radians((angle + 90) % 360)), v * sin(radians((angle + 90) % 360)) ]
 
 	@property
@@ -131,7 +169,7 @@ class SpaceObject(object):
 		"""
 		w, h = pg.display.get_surface().get_size()
 		factor = min(w, h) * self.cam.zoom / (AU * MAX_AU)
-		return ((factor * (self.pos[0] - self.cam.pos[0]) + w) // 2, # FIXME: make it fit the screen, and have nothing negative of course
+		return ((factor * (self.pos[0] - self.cam.pos[0]) + w) // 2, # FIXME: readjust
 		        (factor * (self.pos[1] - self.cam.pos[1]) + h) // 2) #
 
 	@property
@@ -145,7 +183,6 @@ class SpaceObject(object):
 		"""
 		Draws the SpaceObject to the PyGame screen
 		"""
-		w, h = pg.display.get_surface().get_size()
 		if self.on_screen:
 			pg.draw.circle(pg.display.get_surface(), self.colour, self.pos_on_screen, self.size_on_screen)
 
@@ -208,29 +245,62 @@ class Camera(object):
 # Awaiting data from Conor
 def init_space_objects(cam):
 	global sun, mercury, venus, earth, moon, mars, jupiter, saturn, uranus, neptune, rocket
-	global space_objects
+	global mercury_orbit
+	global space_objects, orbit_objects
 
-	#                      name      x_pos, y_pos, x_vel, y_vel, mass,    radius,      colour,  au_mag,  angle,                         period_days
-	sun =     SpaceObject("Sun",     0,     0,     0,     0,     SUN_M,   6.96e8, cam, 0xffdd59)
-	mercury = SpaceObject("Mercury", 0,     0,     0,     0,     3.30e23, 2.44e6, cam, 0xad8866, 0.309,  angle_from_dhm(129, 15, 25.9), 87.97)
-	venus =   SpaceObject("Venus",   0,     0,     0,     0,     4.87e24, 6.05e6, cam, 0xd88200, 0.728,  angle_from_dhm(23, 19, 30.1),  224.70)
-	earth =   SpaceObject("Earth",   0,     0,     0,     0,     5.97e24, 6.37e6, cam, 0x46b1db, 0.983,  angle_from_dhm(0, 0, 0),       365.25)
-	moon =    SpaceObject("Moon",    0,     0,     0,     0,     7.35e22, 1.74e6, cam, 0xd7d7d7, 0,      0,                             1) # Earth's moon, positioned a bit differently (TODO)
-	mars =    SpaceObject("Mars",    0,     0,     0,     0,     6.42e23, 3.40e6, cam, 0xd64f0c, 1.564,  angle_from_dhm(18, 47, 52.7),  686.98)
-	jupiter = SpaceObject("Jupiter", 0,     0,     0,     0,     1.90e27, 7.15e7, cam, 0xe8bfa7, 4.951,  angle_from_dhm(11, 19, 21.1),  4332.82)
-	saturn =  SpaceObject("Saturn",  0,     0,     0,     0,     5.68e26, 6.03e7, cam, 0xe5c97e, 9.836,  angle_from_dhm(3, 52, 37.2),   10755.70)
-	uranus =  SpaceObject("Uranus",  0,     0,     0,     0,     8.68e25, 2.56e7, cam, 0x5d94e2, 19.670, angle_from_dhm(2, 20, 17.0),   30687.15)
-	neptune = SpaceObject("Neptune", 0,     0,     0,     0,     1.02e26, 2.48e7, cam, 0x3768d3, 29.912, angle_from_dhm(1, 48, 6.7),    60190.03)
+	#                      name      x_pos, y_pos, x_vel, y_vel, mass,    radius, colour,        au_mag,  angle,                         period_days
+	sun =     SpaceObject("Sun",     0,     0,     0,     0,     SUN_M,   6.96e8, 0xffdd59, cam)
+	mercury = SpaceObject("Mercury", 0,     0,     0,     0,     3.30e23, 2.44e6, 0xad8866, cam, 0.309,  angle_from_dhm(129, 15, 25.9), 87.97)
+	venus =   SpaceObject("Venus",   0,     0,     0,     0,     4.87e24, 6.05e6, 0xd88200, cam, 0.728,  angle_from_dhm(23, 19, 30.1),  224.70)
+	earth =   SpaceObject("Earth",   0,     0,     0,     0,     5.97e24, 6.37e6, 0x46b1db, cam, 0.983,  angle_from_dhm(0, 0, 0),       365.25)
+	moon =    SpaceObject("Moon",    0,     0,     0,     0,     7.35e22, 1.74e6, 0xd7d7d7, cam, 0,      0,                             1) # Earth's moon, positioned a bit differently (TODO)
+	mars =    SpaceObject("Mars",    0,     0,     0,     0,     6.42e23, 3.40e6, 0xd64f0c, cam, 1.564,  angle_from_dhm(18, 47, 52.7),  686.98)
+	jupiter = SpaceObject("Jupiter", 0,     0,     0,     0,     1.90e27, 7.15e7, 0xe8bfa7, cam, 4.951,  angle_from_dhm(11, 19, 21.1),  4332.82)
+	saturn =  SpaceObject("Saturn",  0,     0,     0,     0,     5.68e26, 6.03e7, 0xe5c97e, cam, 9.836,  angle_from_dhm(3, 52, 37.2),   10755.70)
+	uranus =  SpaceObject("Uranus",  0,     0,     0,     0,     8.68e25, 2.56e7, 0x5d94e2, cam, 19.670, angle_from_dhm(2, 20, 17.0),   30687.15)
+	neptune = SpaceObject("Neptune", 0,     0,     0,     0,     1.02e26, 2.48e7, 0x3768d3, cam, 29.912, angle_from_dhm(1, 48, 6.7),    60190.03)
 
-	rocket = Rocket("Rocket", 0, 0, 0, 0, ROCKET_MASS + INIT_FUEL_MASS, ROCKET_HEIGHT // 2, cam, 0x999999) # Since the rocket isn't spherical, will just have to approximate the effect of gravity
+	#                      name,           au_mag, colour,   centre
+	mercury_orbit = Orbit("Mercury orbit", 0.309,  0xad8866, sun,   cam)
+	venus_orbit   = Orbit("Venus orbit",   0.728,  0xd88200, sun,   cam)
+	earth_orbit   = Orbit("Earth orbit",   0.983,  0x46b1db, sun,   cam)
+	#moon_orbit    = Orbit("Moon orbit",    0,      0xd7d7d7, earth, cam) # TODO
+	mars_orbit    = Orbit("Mars orbit",    1.564,  0xd64f0c, sun,   cam)
+	jupiter_orbit = Orbit("Jupiter orbit", 4.951,  0xe8bfa7, sun,   cam)
+	saturn_orbit  = Orbit("Saturn orbit",  9.836,  0xe5c97e, sun,   cam)
+	uranus_orbit  = Orbit("Uranus orbit",  19.670, 0x5d94e2, sun,   cam)
+	neptune_orbit = Orbit("Neptune orbit", 29.912, 0x3768d3, sun,   cam)
+
+	rocket = Rocket("Rocket", 0, 0, 0, 0, ROCKET_MASS + INIT_FUEL_MASS, ROCKET_HEIGHT // 2, 0x999999, cam) # Since the rocket isn't spherical, will just have to approximate the effect of gravity
 
 	space_objects = [ sun, jupiter, saturn, uranus, neptune, earth, venus, mars, mercury, moon, rocket ] # All objects we'll consider which will/may have some impact on gravitational forces acting on the rocket
+	orbit_objects = [ mercury_orbit, venus_orbit, earth_orbit, mars_orbit, jupiter_orbit, saturn_orbit, uranus_orbit, neptune_orbit ] # TODO: add moon_orbit
 
 def angle_from_dhm(degrees, hours, minutes):
 	"""
 	Calculates angle from degrees, hours, minutes
 	"""
 	return degrees + hours / 60 + minutes / 3600
+
+def darken(colour, factor):
+	"""
+	Darkens a hexadecimal colour by factor
+	"""
+	b = colour % 256
+	colour //= 256
+	g = colour % 256
+	colour //= 256
+	r = colour
+	assert r < 255
+	b *= factor
+	g *= factor
+	r *= factor
+	colour = round(r)
+	colour *= 256
+	colour += round(g)
+	colour *= 256
+	colour += round(b)
+	return colour
 
 
 # Simulation
@@ -275,6 +345,8 @@ def run():
 		window.fill(BLACK)
 
 		simulate(clock.get_time(), pg.time.get_ticks(), space_objects, camera)
+		for orbit in orbit_objects:
+			orbit.draw()
 		for so in space_objects:
 			so.draw()
 
