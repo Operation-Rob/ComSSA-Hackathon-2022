@@ -14,21 +14,28 @@ from consts import *
 class SpaceObject(object):
 	def __init__(self, name="UFO", x_pos=0, y_pos=0, x_vel=0, y_vel=0, mass=1e24, radius=1e7, cam=None, colour=0xffff00, au_mag=0, angle=0, period_days=0):
 		assert cam is not None
+		self.cam = cam
 		self.name = name
-		if au_mag != 0:
-			r = au_mag * AU
-			self.pos = [ r * cos(angle), r * sin(angle) ]
-		else:
-			self.pos = [ x_pos, y_pos ] # In meters
 		self.vel = [ x_vel, y_vel ]     # In meters/sec
 		self.mass = mass                # In kg
 		self.radius = radius            # In meters
 		self.colour = colour
-		self.cam = cam
-		if period_days > 0 and au_mag != 0:
+
+		if au_mag != 0:
 			r = au_mag * AU
-			v = 2 * pi * r / (period_days * SECS_IN_A_DAY) # v=(2*pi*r)/T
-			self.vel = [ v * cos((angle + 90) % 360), v * sin((angle + 90) % 360) ] # Tangent line to point on circle TODO: verify
+			self.pos = [ r * cos(radians(angle)), r * sin(radians(angle)) ]
+		else:
+			self.pos = [ x_pos, y_pos ] # In meters
+
+		if period_days > 0 and au_mag != 0: # TODO: take into account effect of all planets
+			# Calculation to work out initial velocity
+			r = au_mag * AU
+			v = 0
+			if False: # Incorrect method
+				v = 2 * pi * r / (period_days * SECS_IN_A_DAY) # v = (2*pi*r)/T
+			else:
+				v = sqrt(G * SUN_M / r) # From both F_g = G(m1m2/r^2) and a=v^2/r
+			self.vel = [ v * cos(radians((angle + 90) % 360)), v * sin(radians((angle + 90) % 360)) ]
 
 	@property
 	def coords(self):
@@ -56,19 +63,16 @@ class SpaceObject(object):
 		"""
 		return abs(self.speed, object2.speed)
 
-	def update_pos(self, time, accel=[0,0]):
+	def update_pos(self, time, accel=[ 0, 0 ]):
 		"""
 		Updates the position of the SpaceObject after time `time`, potentially with acceleration (a_x, a_y) changing velocity
 		"""
 		# s = ut + 0.5at^2
 		# v = u + at
-		# TODO: verify this is how you're supposed to implement position changing
 		self.pos[0] += self.vel[0] * time + accel[0] * time**2 / 2
 		self.pos[1] += self.vel[1] * time + accel[1] * time**2 / 2
 		self.vel[0] += accel[0] * time
 		self.vel[1] += accel[1] * time
-		#self.pos[0] += time * self.vel[0]
-		#self.pos[1] += time * self.vel[1]
 
 	def dist_to(self, object2):
 		"""
@@ -114,7 +118,7 @@ class SpaceObject(object):
 				a = [ None, None ]
 				break
 			else:
-				a[0] += accel / dist * self.coords_rel_to(so)[0] # TODO: verify; accel/dist normalises it, then multiply by x-distance or y-distance
+				a[0] += accel / dist * self.coords_rel_to(so)[0] # Accel/dist normalises it, then multiply by x-distance or y-distance
 				a[1] += accel / dist * self.coords_rel_to(so)[1] #
 		return a
 
@@ -207,7 +211,7 @@ def init_space_objects(cam):
 	global space_objects
 
 	#                      name      x_pos, y_pos, x_vel, y_vel, mass,    radius,      colour,  au_mag,  angle,                         period_days
-	sun =     SpaceObject("Sun",     0,     0,     0,     0,     1.99e30, 6.96e8, cam, 0xffdd59)
+	sun =     SpaceObject("Sun",     0,     0,     0,     0,     SUN_M,   6.96e8, cam, 0xffdd59)
 	mercury = SpaceObject("Mercury", 0,     0,     0,     0,     3.30e23, 2.44e6, cam, 0xad8866, 0.309,  angle_from_dhm(129, 15, 25.9), 87.97)
 	venus =   SpaceObject("Venus",   0,     0,     0,     0,     4.87e24, 6.05e6, cam, 0xd88200, 0.728,  angle_from_dhm(23, 19, 30.1),  224.70)
 	earth =   SpaceObject("Earth",   0,     0,     0,     0,     5.97e24, 6.37e6, cam, 0x46b1db, 0.983,  angle_from_dhm(0, 0, 0),       365.25)
@@ -242,8 +246,8 @@ def simulate(delta_t_ms, total_ms, so_list, cam):
 	# Rather than doing time_passed = delta_t_ms / 1000 * SECS_IN_A_DAY, execute it second-by-second so it's more accurate
 	for iteration_num in range(ITERATIONS_PER_FRAME):
 		for i in range(num_objs):
-			#accelerations[i] = so_list[i].net_accel_from(so_list)
-			accelerations[i] = so_list[i].net_accel_from([ sun ]) # FIXME: (fix later; once physics are fixed) for now, just assume the only force acting on anything is due to the sun
+			accelerations[i] = so_list[i].net_accel_from(so_list)
+			#accelerations[i] = so_list[i].net_accel_from([ sun ])
 
 		# Update positions
 		for i in range(num_objs):
@@ -278,11 +282,9 @@ def run():
 			camera.zoom_by(1.01)
 
 		pg.display.update()
-	
+
 		for event in pg.event.get():
 			if event.type == pg.QUIT:
-				if DEBUG:
-					print(venus.pos)
 				running = False
 	quit()
 
