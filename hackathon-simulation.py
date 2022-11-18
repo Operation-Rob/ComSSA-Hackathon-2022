@@ -1,25 +1,22 @@
-import pygame
+import pygame as pg
 from math import *
+from consts import *
 
-
-DEBUG = 0
-
-# Awaiting data from Conor/Jack
-ROCKET_MASS = 2e6    # In kilograms
-ROCKET_HEIGHT = 100  # In meters
-INIT_FUEL_MASS = 2e6 # In kilograms
-FUEL_PER_SEC = 5     # In kilograms/sec
-G = 6.67e-11         # Gravitational constant
 
 # Any object we'll be considering in the physics simulation
 class SpaceObject(object):
-	def __init__(self, name="UFO", x_pos=0, y_pos=0, x_vel=0, y_vel=0, mass=1e24, radius=1e7, colour=0xffff00):
+	def __init__(self, name="UFO", x_pos=0, y_pos=0, x_vel=0, y_vel=0, mass=1e24, radius=1e7, cam=None, colour=0xffff00, au_mag=0, angle=0):
 		self.name = name
-		self.pos = [ x_pos, y_pos ] # In meters
-		self.vel = [ x_vel, y_vel ] # In meters/sec
-		self.mass = mass            # In kg
-		self.radius = radius        # In meters
+		if x_pos or y_pos:
+			self.pos = [ x_pos, y_pos ] # In meters
+		else:
+			self.pos = [ au_mag * AU * cos(angle), au_mag * AU * sin(angle) ]
+		self.vel = [ x_vel, y_vel ]     # In meters/sec
+		self.mass = mass                # In kg
+		self.radius = radius            # In meters
 		self.colour = colour
+		assert cam is not None
+		self.cam = cam
 
 	@property
 	def coords(self):
@@ -29,7 +26,7 @@ class SpaceObject(object):
 		return self.vel
 	@property
 	def speed(self):
-		return sqrt(v_x**2 + v_y**2)
+		return sqrt(self.vel[0]**2 + self.vel[1]**2)
 
 	def coords_rel_to(self, object2):
 		"""
@@ -47,16 +44,16 @@ class SpaceObject(object):
 		"""
 		return abs(self.speed, object2.speed)
 
-	def update_pos(self, time, a_x=0, a_y=0):
+	def update_pos(self, time, accel=[0,0]):
 		"""
 		Updates the position of the SpaceObject after time `time`, potentially with acceleration (a_x, a_y) changing velocity
 		"""
 		# v = u + at
 		# s = ut + 0.5at^2 (???)
-		self.pos[0] += self.vel[0] * time + a_x * time**2 / 2
-		self.pos[1] += self.vel[1] * time + a_y * time**2 / 2
-		self.vel[0] += a_x * time
-		self.vel[1] += a_y * time
+		self.pos[0] += self.vel[0] * time + accel[0] * time**2 / 2
+		self.pos[1] += self.vel[1] * time + accel[0] * time**2 / 2
+		self.vel[0] += accel[0] * time
+		self.vel[1] += accel[1] * time
 		#self.pos[0] += time * self.vel[0]
 		#self.pos[1] += time * self.vel[1]
 
@@ -108,6 +105,20 @@ class SpaceObject(object):
 				a[1] += accel / dist * self.coords_rel_to(so)[1] #
 		return a
 
+	# Pygame related functions
+	@property
+	def pos_on_screen(self):
+		w, h = pg.display.get_surface().get_size()
+		factor = min(w, h) * self.cam.zoom / (AU * MAX_AU)
+		return ((factor * (self.pos[0] - self.cam.pos[0]) + w) // 2, (factor * (self.pos[1] - self.cam.pos[1]) + h) // 2) # FIXME: make it fit the screen, and have nothing negative of course
+	@property
+	def size_on_screen(self):
+		return (self.cam.zoom * self.radius)**(1/6) // 4
+	def draw(self):
+		w, h = pg.display.get_surface().get_size()
+		if self.pos_on_screen[0] < w and self.pos_on_screen[1] < h:
+			pg.draw.circle(pg.display.get_surface(), self.colour, self.pos_on_screen, self.size_on_screen)
+
 
 
 # Sub-class of SpaceObject, adds functions related to rocket (depletion of fuel)
@@ -135,57 +146,104 @@ class Rocket(SpaceObject):
 		"""
 		self.mass = self.total_rocket_mass(time)
 
+# Data about the camera
+class Camera(object):
+	def __init__(self, x=0, y=0, angle=0, zoom=1):
+		self.pos = [ x, y]
+		self.angle = angle
+		self.zoom = zoom
+	
+	@property
+	def rotation(self):
+		return self.angle
+	def goto(self, pos):
+		assert len(pos) == 2
+		self.pos = pos
+	def set_rot(self, rot):
+		self.angle = rot
+	def rotate(self, rot):
+		self.angle += rot
+	def set_zoom(self, zoom):
+		self.zoom = zoom
+	def zoom_by(self, zoom_factor):
+		"""
+		Zooms in by factor of `zoom_factor`
+		"""
+		self.zoom *= zoom_factor
+
 
 
 # TODO: all SpaceObjects
 # Awaiting data from Conor
-#                      name      x_pos, y_pos, x_vel, y_vel, mass,    radius, colour
-sun =     SpaceObject("Sun",     0,     0,     0,     0,     1.99e30, 6.96e8, 0xffdd59)
-mercury = SpaceObject("Mercury", 0,     0,     0,     0,     3.30e23, 2.44e6, 0xad8866)
-venus =   SpaceObject("Venus",   0,     0,     0,     0,     4.87e24, 6.05e6, 0xd88200)
-earth =   SpaceObject("Earth",   0,     0,     0,     0,     5.97e24, 6.37e6, 0x46b1db)
-moon =    SpaceObject("Moon",    0,     0,     0,     0,     7.35e22, 1.74e6, 0xd7d7d7) # Earth's moon
-mars =    SpaceObject("Mars",    0,     0,     0,     0,     6.42e23, 3.40e6, 0xd64f0c)
-jupiter = SpaceObject("Jupiter", 0,     0,     0,     0,     1.90e27, 7.15e7, 0xe8bfa7)
-saturn =  SpaceObject("Saturn",  0,     0,     0,     0,     5.68e26, 6.03e7, 0xe5c97e)
-uranus =  SpaceObject("Uranus",  0,     0,     0,     0,     8.68e25, 2.56e7, 0x5d94e2)
-neptune = SpaceObject("Neptune", 0,     0,     0,     0,     1.02e26, 2.48e7, 0x3768d3)
+def init_space_objects(cam):
+	global sun, mercury, venus, earth, moon, mars, jupiter, saturn, uranus, neptune, rocket
+	global space_objects
 
-rocket = Rocket("Rocket", 0, 0, 0, 0, ROCKET_MASS + INIT_FUEL_MASS, ROCKET_HEIGHT // 2, 0x999999) # Since the rocket isn't spherical, will just have to approximate the effect of gravity
+	#                      name      x_pos, y_pos, x_vel, y_vel, mass,    radius,      colour,  au_mag,  angle
+	sun =     SpaceObject("Sun",     0,     0,     0,     0,     1.99e30, 6.96e8, cam, 0xffdd59)
+	mercury = SpaceObject("Mercury", 0,     0,     0,     0,     3.30e23, 2.44e6, cam, 0xad8866, 0.309,  129.25719444444444)
+	venus =   SpaceObject("Venus",   0,     0,     0,     0,     4.87e24, 6.05e6, cam, 0xd88200, 0.728,  23.325027777777777)
+	earth =   SpaceObject("Earth",   0,     0,     0,     0,     5.97e24, 6.37e6, cam, 0x46b1db, 0.983,  0.0)
+	moon =    SpaceObject("Moon",    0,     0,     0,     0,     7.35e22, 1.74e6, cam, 0xd7d7d7, 0,      0) # Earth's moon
+	mars =    SpaceObject("Mars",    0,     0,     0,     0,     6.42e23, 3.40e6, cam, 0xd64f0c, 1.564,  18.797972222222222)
+	jupiter = SpaceObject("Jupiter", 0,     0,     0,     0,     1.90e27, 7.15e7, cam, 0xe8bfa7, 4.951,  11.322527777777777)
+	saturn =  SpaceObject("Saturn",  0,     0,     0,     0,     5.68e26, 6.03e7, cam, 0xe5c97e, 9.836,  3.877)
+	uranus =  SpaceObject("Uranus",  0,     0,     0,     0,     8.68e25, 2.56e7, cam, 0x5d94e2, 19.670, 2.3380555555555556)
+	neptune = SpaceObject("Neptune", 0,     0,     0,     0,     1.02e26, 2.48e7, cam, 0x3768d3, 29.912, 1.8018611111111111)
 
-space_objects = [ rocket, sun, mercury, venus, earth, moon, mars, jupiter, saturn, uranus, neptune ] # All objects we'll consider which will/may have some impact on gravitational forces acting on the rocket
+	rocket = Rocket("Rocket", 0, 0, 0, 0, ROCKET_MASS + INIT_FUEL_MASS, ROCKET_HEIGHT // 2, cam, 0x999999) # Since the rocket isn't spherical, will just have to approximate the effect of gravity
 
+	space_objects = [ sun, jupiter, saturn, uranus, neptune, earth, venus, mars, mercury, moon, rocket ] # All objects we'll consider which will/may have some impact on gravitational forces acting on the rocket
 
 
 # Simulation
-DAYS = 10                  # Number of days to simulate
-TIME_LIMIT = 60*60*24*DAYS # Formula for the time limit
-FPS = 60                   # Frames per second of the animation
-ANIMATION_SECONDS = 30     # How many seconds the animation will last for
+def simulate(delta_t_ms, total_ms, so_list, cam):
+	"""
+	Make all of the objects accelerate each other
+	"""
+	num_objs = len(so_list)
+	time_passed = delta_t_ms / 1000
+	total_time_passed = total_ms / 1000
 
-TIME_CHANGE = (TIME_LIMIT / FPS) / ANIMATION_SECONDS # Delta t
-# TIME_LIMIT / FPS is enough to make the animation last one second
+	accelerations = [ [ 0, 0 ] ] * num_objs
+	for	i in range(num_objs):
+		accelerations[i] = so_list[i].net_accel_from(so_list)
+	# Update positions
+	for i in range(num_objs):
+		so_list[i].update_pos(time_passed, accelerations[i])
 
+	rocket.update_mass(total_time_passed) # Update rocket's fuel
 
-def simulate():
-	time_s = 0
-	while time_s < TIME_LIMIT:
-		# TODO: core simulation
+	cam.goto(earth.pos)
 
-		# Make all of the objects accelerate each other
-		accelerations = [ [ 0, 0 ] ] * len(space_objects)
-		for	i in range(len(space_objects)):
-			accelerations[i] = space_objects[i].net_accel_from(space_objects)
-		# Update positions
-		for i in range(len(space_objects)):
-			space_objects[i].update_pos(TIME_CHANGE, *accelerations[i])
+def run():
+	camera = Camera()
+	window = pg.display.set_mode((INIT_WIN_WIDTH, INIT_WIN_HEIGHT), pg.RESIZABLE)
+	pg.display.set_caption("Slingshot Simulation")
 
-		rocket.update_mass(time_s) # Update rocket's fuel
+	init_space_objects(camera)
 
-		# TODO: graph new positions
+	clock = pg.time.Clock()
+	running = True
+	while running:
+		clock.tick(FPS)
+		window.fill(0x000000)
 
-		time_s += TIME_CHANGE
+		simulate(clock.get_time(), pg.time.get_ticks(), space_objects, camera)
+		for so in space_objects:
+			so.draw()
 
+		if camera.zoom < 10: # Zoom in initially
+			camera.zoom_by(1.01)
+
+		pg.display.update()
+	
+		for event in pg.event.get():
+			if event.type == pg.QUIT:
+				if DEBUG:
+					print(venus.pos)
+				running = False
+	quit()
 
 if __name__ == "__main__":
-	simulate()
+	run()
