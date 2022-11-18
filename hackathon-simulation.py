@@ -40,7 +40,7 @@ class SpaceObject(object):
 		"""
 		Velocity of self relative to object2
 		"""
-		return [ object2.pos[0] - self.pos[0], object2.pos[1] - self.pos[1] ]
+		return [ object2.vel[0] - self.vel[0], object2.vel[1] - self.vel[1] ]
 	def speed_rel_to(self, object2):
 		"""
 		Speed of self relative to object2 (absolute value of difference)
@@ -65,11 +65,11 @@ class SpaceObject(object):
 		Distance from self to some other SpaceObject
 		"""
 		#assert type(self) == type(object2)
-		return sqrt((self.pos[0] - object2.pos[0])**2 + (self.pos[1] - object2.pos[1])**2)
+		return sqrt(self.coords_rel_to(object2)[0]**2 + self.coords_rel_to(object2)[1]**2)
 
 	def pull_to(self, object2):
 		"""
-		Gravitation pull from self to some other SpaceObject (force; Newtons)
+		Gravitational pull from self to some other SpaceObject (force; Newtons)
 		"""
 		r = self.dist_to(object2)
 		if r == 0: # Shouldn't occur
