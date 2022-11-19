@@ -16,7 +16,7 @@ SUN_M = 1.99e30      # Mass of sun (kg)
 
 # Animation things
 FPS = 60                   # Frames per second of the animation
-ITERATIONS_PER_FRAME = 100 # How many times the physics is calculated per frame. The higher, the more accurate, but the slower the program will run
+ITERATIONS_PER_FRAME = 1 # How many times the physics is calculated per frame. The higher, the more accurate, but the slower the program will run
 DAYS_PER_FRAME = 10        # How many (Earth) days pass in one second of the animation
 
 # Deprecated time-animation things

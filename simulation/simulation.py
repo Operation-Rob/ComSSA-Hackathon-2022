@@ -29,13 +29,49 @@ class Orbit(object):
 		"""
 		w, h = pg.display.get_surface().get_size()
 		factor = min(w, h) * self.cam.zoom / (AU * MAX_AU)
-		return ((factor * (self.centre.pos[0] - self.cam.pos[0]) + w) // 2, # FIXME: readjust
-		        (factor * (self.centre.pos[1] - self.cam.pos[1]) + h) // 2) #
+		return (((factor * (self.centre.pos[0] - self.cam.pos[0]) + w)) // 2, # FIXME: readjust
+		        ((factor * (self.centre.pos[1] - self.cam.pos[1]) + h)) // 2) #
 
 	# Pygame related functions
 	@property
 	def on_screen(self):
-		return True #self.pos_on_screen[0] <= w and self.pos_on_screen[0] >= 0 and self.pos_on_screen[1] <= h and self.pos_on_screen[1] >= 0
+		"""
+		return self.name == "Moon orbit" or self.name == "Earth orbit"
+		"""
+		w, h = pg.display.get_surface().get_size()
+		x, y = self.pos_on_screen
+		size = self.size_on_screen
+		count = 0
+		if x <= w and x >= 0 and y <= h and y >= 0: # If the centre is on the screen
+			if x**2 + y**2 >= size**2: # Distance to edge is larger than distance to orbit
+				count += 1
+			if (x - w)**2 + (y - h)**2 >= size**2:
+				count += 1
+			if (x - w)**2 + y**2 >= size**2:
+				count += 1
+			if x**2 + (y - h)**2 >= size**2:
+				count += 1
+			if count != 0:
+				return True
+			return False
+		else:
+			if x**2 + y**2 <= size**2: # Distance to edge is larger than distance to orbit
+				count += 1
+			if (x - w)**2 + (y - h)**2 <= size**2:
+				count += 1
+			if (x - w)**2 + y**2 <= size**2:
+				count += 1
+			if x**2 + (y - h)**2 <= size**2:
+				count += 1
+			if count % 4 != 0:
+				return True
+			if x >= 0 and x <= w and (abs(y - h) <= size or abs(y) <= size):
+				return True
+			if y >= 0 and y <= h and (abs(x - w) <= size or abs(x) <= size):
+				return True
+			return False
+
+			
 	@property
 	def size_on_screen(self):
 		w, h = pg.display.get_surface().get_size()
@@ -156,9 +192,7 @@ class SpaceObject(object):
 		if self.impacted_by_gravity == False:
 			return a
 		for so in object_list: # For each (distinct) space object,
-			if so.impacted_by_gravity == False:
-				continue
-			if so.name == self.name:
+			if so.impacted_by_gravity == False or so.name == self.name:
 				continue
 
 			dist = self.dist_to(so)
@@ -180,15 +214,16 @@ class SpaceObject(object):
 		"""
 		w, h = pg.display.get_surface().get_size()
 		factor = min(w, h) * self.cam.zoom / (AU * MAX_AU)
-		return ((factor * (self.pos[0] - self.cam.pos[0]) + w) // 2, # FIXME: readjust
-		        (factor * (self.pos[1] - self.cam.pos[1]) + h) // 2) #
+		return (((factor * (self.pos[0] - self.cam.pos[0]) + w)) // 2, # FIXME: readjust
+		        ((factor * (self.pos[1] - self.cam.pos[1]) + h)) // 2) #
 
 	@property
 	def on_screen(self):
-		return True #self.pos_on_screen[0] <= w and self.pos_on_screen[0] >= 0 and self.pos_on_screen[1] <= h and self.pos_on_screen[1] >= 0
+		w, h = pg.display.get_surface().get_size()
+		return self.pos_on_screen[0] <= w and self.pos_on_screen[0] >= 0 and self.pos_on_screen[1] <= h and self.pos_on_screen[1] >= 0
 	@property
 	def size_on_screen(self):
-		return (self.cam.zoom * self.radius)**(1/4) // 2e1 # Just some flimsy calculation to make the sun not incredibly larger than the others. TODO will improve later
+		return (self.cam.zoom * self.radius)**(1/4) // 20 # Just some flimsy calculation to make the sun not incredibly larger than the others. TODO will improve later
 
 	def draw(self):
 		"""
@@ -367,8 +402,7 @@ def simulate(delta_t_ms, total_ms, so_list, cam):
 				so_list[i].update_pos(time_passed / ITERATIONS_PER_FRAME, accelerations[i])
 
 		rocket.update_mass(secs_passed / ITERATIONS_PER_FRAME) # Update rocket's fuel
-	
-	year_and_month_text.text = f"{get_year(years_passed)} {get_month(years_passed)}"
+
 
 def run_presentation():
 	pg.init()
@@ -386,16 +420,23 @@ def run_presentation():
 		clock.tick(FPS)
 		window.fill(BLACK)
 
-		simulate(clock.get_time(), pg.time.get_ticks(), space_objects, camera)
+		delta_t_ms = clock.get_time()
+		total_ms = pg.time.get_ticks()
+		years_passed = total_ms / 1000 * DAYS_PER_FRAME / 365
 
-		camera.goto(earth.pos)
-		#camera.goto(sun.pos)
+		simulate(delta_t_ms, total_ms, space_objects, camera)
+
+		#camera.goto(earth.pos)
+		camera.goto(venus.pos)
+
+		year_and_month_text.text = f"{get_year(years_passed)} {get_month(years_passed)}"
+		fps_text.text = str(round(1000 / delta_t_ms))
 
 		for obj_list in draw_objects:
 			for elem in obj_list:
 				elem.draw()
 
-		if camera.zoom < 10000: # Zoom in initially
+		if camera.zoom < 100: # Zoom in initially
 			camera.zoom_by(1.01)
 
 		pg.display.update()
