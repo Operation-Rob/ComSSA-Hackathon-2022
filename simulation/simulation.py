@@ -7,9 +7,11 @@
 import pygame as pg
 from math import *
 from consts import *
+from utils import *
 
 
-# For the rings
+
+# The orbit rings
 class Orbit(object):
 	def __init__(self, name="UFO orbit", au_mag=0, colour=0xffff00, centre=None, cam=None):
 		assert centre is not None
@@ -30,6 +32,7 @@ class Orbit(object):
 		return ((factor * (self.centre.pos[0] - self.cam.pos[0]) + w) // 2, # FIXME: readjust
 		        (factor * (self.centre.pos[1] - self.cam.pos[1]) + h) // 2) #
 
+	# Pygame related functions
 	@property
 	def on_screen(self):
 		return True #self.pos_on_screen[0] <= w and self.pos_on_screen[0] >= 0 and self.pos_on_screen[1] <= h and self.pos_on_screen[1] >= 0
@@ -37,7 +40,7 @@ class Orbit(object):
 	def size_on_screen(self):
 		w, h = pg.display.get_surface().get_size()
 		factor = min(w, h) * self.cam.zoom / (AU * MAX_AU)
-		return self.radius * factor / 2
+		return ceil(self.radius * factor / 2)
 
 	def draw(self):
 		"""
@@ -49,7 +52,7 @@ class Orbit(object):
 
 # Any object we'll be considering in the physics simulation
 class SpaceObject(object):
-	def __init__(self, name="UFO", x_pos=0, y_pos=0, x_vel=0, y_vel=0, mass=1e24, radius=1e7, colour=0xffff00, cam=None, au_mag=0, angle=0, period_days=0):
+	def __init__(self, name="UFO", x_pos=0, y_pos=0, x_vel=0, y_vel=0, mass=1e24, radius=1e7, colour=0xffff00, cam=None, au_mag=0, angle=0, period_days=0, impacted_by_gravity=True):
 		assert cam is not None
 		self.cam = cam
 		self.name = name
@@ -57,6 +60,7 @@ class SpaceObject(object):
 		self.mass = mass                # In kg
 		self.radius = radius            # In meters
 		self.colour = colour
+		self.impacted_by_gravity = impacted_by_gravity
 
 		if au_mag != 0:
 			r = au_mag * AU
@@ -122,6 +126,8 @@ class SpaceObject(object):
 		"""
 		Gravitational pull from self to some other SpaceObject (force; Newtons)
 		"""
+		if self.impacted_by_gravity == False:
+			return 0
 		r = self.dist_to(object2)
 		if r < DIST_THRESHOLD: # Shouldn't occur
 			if DEBUG:
@@ -133,6 +139,8 @@ class SpaceObject(object):
 		"""
 		Acceleration from self towards some other SpaceObject caused by gravitational pull (acceleration; m/s^2)
 		"""
+		if self.impacted_by_gravity == False:
+			return 0
 		r = self.dist_to(object2)
 		if r < DIST_THRESHOLD: # Shouldn't occur
 			if DEBUG:
@@ -145,7 +153,11 @@ class SpaceObject(object):
 		Net acceleration caused by all SpaceObjects in object_list
 		"""
 		a = [ 0, 0 ]
+		if self.impacted_by_gravity == False:
+			return a
 		for so in object_list: # For each (distinct) space object,
+			if so.impacted_by_gravity == False:
+				continue
 			if so.name == self.name:
 				continue
 
@@ -176,7 +188,7 @@ class SpaceObject(object):
 		return True #self.pos_on_screen[0] <= w and self.pos_on_screen[0] >= 0 and self.pos_on_screen[1] <= h and self.pos_on_screen[1] >= 0
 	@property
 	def size_on_screen(self):
-		return (self.cam.zoom * self.radius)**(1/8) # Just some flimsy calculation to make the sun not incredibly larger than the others. TODO will improve later
+		return (self.cam.zoom * self.radius)**(1/4) // 2e1 # Just some flimsy calculation to make the sun not incredibly larger than the others. TODO will improve later
 
 	def draw(self):
 		"""
@@ -239,67 +251,94 @@ class Camera(object):
 		self.zoom *= zoom_factor
 
 
+# Text object for drawing text
+class Text(object):
+	def __init__(self, text="Text", window=None, font=None, pos=[ 20, 20 ], colour=0xffffff):
+		assert window is not None
+		assert font is not None
+		self.window = window
+		self.font = font
+		self.text = text
+		self.pos = pos
+		self.colour = hex_to_rgb(colour)
+	def draw(self):
+		img = self.font.render(self.text, True, self.colour)
+		pos = self.pos
+		w, h = pg.display.get_surface().get_size()
+		if self.pos[0] < 0:
+			self.pos[0] += w
+		if self.pos[1] < 0:
+			self.pos[1] += h
+		self.window.blit(img, pos)
 
-# TODO: all SpaceObjects
-# Awaiting data from Conor
+
+def moon_update_pos(time, accel=[0,0]):
+	moon.angle_from_earth += time * 360 / (27.3 * SECS_IN_A_DAY)
+	r = 384400e3 # 384400 km
+	v = sqrt(G * earth.mass / r) # From both F_g = G(m1m2/r^2) and a = v^2/r
+	moon.pos = [ earth.pos[0] + r * cos(radians(moon.angle_from_earth)), earth.pos[1] + r * sin(radians(moon.angle_from_earth)) ] # Meters from Earth to moon
+	moon.vel = [ v * cos(radians((moon.angle_from_earth + 90) % 360)), v * sin(radians((moon.angle_from_earth + 90) % 360)) ]
+
+
+# Init functions
+def init_objects(cam, win, font):
+	global draw_objects
+	init_space_objects(cam)
+	init_orbit_objects(cam)
+	init_text_objects(win, font)
+	draw_objects = [ orbit_objects, space_objects, text_objects ]
+
 def init_space_objects(cam):
-	global sun, mercury, venus, earth, moon, mars, jupiter, saturn, uranus, neptune, rocket
-	global mercury_orbit
-	global space_objects, orbit_objects
-
-	#                      name      x_pos, y_pos, x_vel, y_vel, mass,    radius, colour,        au_mag,  angle,                         period_days
+	global space_objects, sun, mercury, venus, earth, moon, mars, jupiter, saturn, uranus, neptune, rocket
+	#                      name      x_pos, y_pos, x_vel, y_vel, mass,    radius, colour,        au_mag,  angle,                        period_days
 	sun =     SpaceObject("Sun",     0,     0,     0,     0,     SUN_M,   6.96e8, 0xffdd59, cam)
 	mercury = SpaceObject("Mercury", 0,     0,     0,     0,     3.30e23, 2.44e6, 0xad8866, cam, 0.309,  angle_from_dhm(129, 15, 25.9), 87.97)
 	venus =   SpaceObject("Venus",   0,     0,     0,     0,     4.87e24, 6.05e6, 0xd88200, cam, 0.728,  angle_from_dhm(23, 19, 30.1),  224.70)
 	earth =   SpaceObject("Earth",   0,     0,     0,     0,     5.97e24, 6.37e6, 0x46b1db, cam, 0.983,  angle_from_dhm(0, 0, 0),       365.25)
-	moon =    SpaceObject("Moon",    0,     0,     0,     0,     7.35e22, 1.74e6, 0xd7d7d7, cam, 0,      0,                             1) # Earth's moon, positioned a bit differently (TODO)
 	mars =    SpaceObject("Mars",    0,     0,     0,     0,     6.42e23, 3.40e6, 0xd64f0c, cam, 1.564,  angle_from_dhm(18, 47, 52.7),  686.98)
 	jupiter = SpaceObject("Jupiter", 0,     0,     0,     0,     1.90e27, 7.15e7, 0xe8bfa7, cam, 4.951,  angle_from_dhm(11, 19, 21.1),  4332.82)
 	saturn =  SpaceObject("Saturn",  0,     0,     0,     0,     5.68e26, 6.03e7, 0xe5c97e, cam, 9.836,  angle_from_dhm(3, 52, 37.2),   10755.70)
 	uranus =  SpaceObject("Uranus",  0,     0,     0,     0,     8.68e25, 2.56e7, 0x5d94e2, cam, 19.670, angle_from_dhm(2, 20, 17.0),   30687.15)
 	neptune = SpaceObject("Neptune", 0,     0,     0,     0,     1.02e26, 2.48e7, 0x3768d3, cam, 29.912, angle_from_dhm(1, 48, 6.7),    60190.03)
+	moon =    SpaceObject("Moon",    0,     0,     0,     0,     7.35e22, 1.74e6, 0xd7d7d7, cam, 0,      0,                             1) # Earth's moon, positioned a bit differently
 
+	# Manually do moon position
+	if False: # FIXME
+		angle = 0
+		r = 384400e3 # 384400 km
+		v = sqrt(G * earth.mass / r) # From both F_g = G(m1m2/r^2) and a = v^2/r
+		moon.pos = [ earth.pos[0] + r * cos(radians(angle)), earth.pos[1] + r * sin(radians(angle)) ] # Meters from Earth to moon
+		moon.vel = [ v * cos(radians((angle + 90) % 360)), v * sin(radians((angle + 90) % 360)) ]
+		moon.impacted_by_gravity = True
+	else:
+		moon.impacted_by_gravity = False
+		moon.angle_from_earth = 0
+		moon.update_pos = moon_update_pos
+
+	rocket = Rocket("Rocket", 0, 0, 0, 0, ROCKET_MASS + INIT_FUEL_MASS, ROCKET_HEIGHT // 2, 0x999999, cam) # Since the rocket isn't spherical, will just have to approximate the effect of gravity
+	space_objects = [ sun, jupiter, saturn, uranus, neptune, earth, venus, mars, mercury, moon, rocket ] # All objects we'll consider which will/may have some impact on gravitational forces acting on the rocket
+
+def init_orbit_objects(cam):
+	global orbit_objects, mercury_orbit, venus_orbit, earth_orbit, moon_orbit, mars_orbit, jupiter_orbit, saturn_orbit, uranus_orbit, neptune_orbit
 	#                      name,           au_mag, colour,   centre
 	mercury_orbit = Orbit("Mercury orbit", 0.309,  0xad8866, sun,   cam)
 	venus_orbit   = Orbit("Venus orbit",   0.728,  0xd88200, sun,   cam)
 	earth_orbit   = Orbit("Earth orbit",   0.983,  0x46b1db, sun,   cam)
-	#moon_orbit    = Orbit("Moon orbit",    0,      0xd7d7d7, earth, cam) # TODO
+	moon_orbit    = Orbit("Moon orbit",    384400e3 / AU,      0xd7d7d7, earth, cam) # TODO
 	mars_orbit    = Orbit("Mars orbit",    1.564,  0xd64f0c, sun,   cam)
 	jupiter_orbit = Orbit("Jupiter orbit", 4.951,  0xe8bfa7, sun,   cam)
 	saturn_orbit  = Orbit("Saturn orbit",  9.836,  0xe5c97e, sun,   cam)
 	uranus_orbit  = Orbit("Uranus orbit",  19.670, 0x5d94e2, sun,   cam)
 	neptune_orbit = Orbit("Neptune orbit", 29.912, 0x3768d3, sun,   cam)
 
-	rocket = Rocket("Rocket", 0, 0, 0, 0, ROCKET_MASS + INIT_FUEL_MASS, ROCKET_HEIGHT // 2, 0x999999, cam) # Since the rocket isn't spherical, will just have to approximate the effect of gravity
-	
-	space_objects = [ sun, jupiter, saturn, uranus, neptune, earth, venus, mars, mercury, moon, rocket ] # All objects we'll consider which will/may have some impact on gravitational forces acting on the rocket
-	orbit_objects = [ mercury_orbit, venus_orbit, earth_orbit, mars_orbit, jupiter_orbit, saturn_orbit, uranus_orbit, neptune_orbit ] # TODO: add moon_orbit
+	orbit_objects = [ mercury_orbit, venus_orbit, earth_orbit, moon_orbit, mars_orbit, jupiter_orbit, saturn_orbit, uranus_orbit, neptune_orbit ]
 
-def angle_from_dhm(degrees, hours, minutes):
-	"""
-	Calculates angle from degrees, hours, minutes
-	"""
-	return degrees + hours / 60 + minutes / 3600
+def init_text_objects(win, font):
+	global text_objects, year_and_month_text, fps_text
+	year_and_month_text = Text("Year Month", win, font, [ -100, 20 ], 0xdddddd)
+	fps_text = Text("FPS", win, font, [-40, -20 ], 0xdddddd)
 
-def darken(colour, factor):
-	"""
-	Darkens a hexadecimal colour by factor
-	"""
-	b = colour % 256
-	colour //= 256
-	g = colour % 256
-	colour //= 256
-	r = colour
-	assert r < 255
-	b *= factor
-	g *= factor
-	r *= factor
-	colour = round(r)
-	colour *= 256
-	colour += round(g)
-	colour *= 256
-	colour += round(b)
-	return colour
+	text_objects = [ year_and_month_text, fps_text ]
 
 
 # Simulation
@@ -308,8 +347,10 @@ def simulate(delta_t_ms, total_ms, so_list, cam):
 	Make all of the objects accelerate each other
 	"""
 	num_objs = len(so_list)
-	time_passed = delta_t_ms / 1000 * SECS_IN_A_DAY * DAYS_PER_FRAME / ITERATIONS_PER_FRAME     # (Real-world) time which will pass in this one frame (divided by ITERATIONS_PER_FRAME)
-	total_time_passed = total_ms / 1000 * SECS_IN_A_DAY * DAYS_PER_FRAME / ITERATIONS_PER_FRAME # Total (real-world) time which has passed since the start of the program (divided by ITERATIONS_PER_FRAME)
+	time_passed = delta_t_ms / 1000 * SECS_IN_A_DAY * DAYS_PER_FRAME # (Real-world) time which will pass in this one frame
+	secs_passed = total_ms / 1000 * SECS_IN_A_DAY * DAYS_PER_FRAME   # Total (real-world) seconds which have passed since the start of the program
+	years_passed = secs_passed / SECS_IN_A_DAY / 365                 # Total (real-world) years which have passed since the start of the program
+
 	accelerations = [ [ 0, 0 ] ] * num_objs
 
 	# Rather than doing time_passed = delta_t_ms / 1000 * SECS_IN_A_DAY, execute it second-by-second so it's more accurate
@@ -323,12 +364,15 @@ def simulate(delta_t_ms, total_ms, so_list, cam):
 			if accelerations[i] == [ None, None ]: # Attempt to make it not slingshot if it gets too close
 				so_list[i].vel = [ 0, 0 ] # Null velocity
 			else:
-				so_list[i].update_pos(time_passed, accelerations[i])
+				so_list[i].update_pos(time_passed / ITERATIONS_PER_FRAME, accelerations[i])
 
-		rocket.update_mass(total_time_passed) # Update rocket's fuel
+		rocket.update_mass(secs_passed / ITERATIONS_PER_FRAME) # Update rocket's fuel
+	
+	year_and_month_text.text = f"{get_year(years_passed)} {get_month(years_passed)}"
 
-	#cam.goto(earth.pos)
-	cam.goto(sun.pos)
+def run_presentation():
+	pg.init()
+	font = pg.font.SysFont(None, 24)
 
 def draw_stats(window, font):
 	dist = font.render(f"Distance: {earth.dist_to(sun) // 1000} kMs" , True, BLUE)
@@ -342,7 +386,7 @@ def run():
 	window = pg.display.set_mode((INIT_WIN_WIDTH, INIT_WIN_HEIGHT), pg.RESIZABLE)
 	pg.display.set_caption("Slingshot Simulation")
 
-	init_space_objects(camera)
+	init_objects(camera, window, font)
 
 	clock = pg.time.Clock()
 	running = True
@@ -351,14 +395,17 @@ def run():
 		window.fill(BLACK)
 
 		simulate(clock.get_time(), pg.time.get_ticks(), space_objects, camera)
-		for orbit in orbit_objects:
-			orbit.draw()
-		for so in space_objects:
-			so.draw()
+
+		camera.goto(earth.pos)
+		#camera.goto(sun.pos)
+
+		for obj_list in draw_objects:
+			for elem in obj_list:
+				elem.draw()
 
 		draw_stats(window, font)
 
-		if camera.zoom < 10: # Zoom in initially
+		if camera.zoom < 10000: # Zoom in initially
 			camera.zoom_by(1.01)
 
 		pg.display.update()
@@ -368,5 +415,12 @@ def run():
 				running = False
 	quit()
 
+def run_simulation():
+	pass # TODO
+
+
 if __name__ == "__main__":
-	run()
+	if True:
+		run_presentation()
+	else:
+		run_simulation()
