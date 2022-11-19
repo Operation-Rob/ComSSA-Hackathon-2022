@@ -9,7 +9,6 @@ from math import *
 from consts import *
 
 
-
 # For the rings
 class Orbit(object):
 	def __init__(self, name="UFO orbit", au_mag=0, colour=0xffff00, centre=None, cam=None):
@@ -272,7 +271,7 @@ def init_space_objects(cam):
 	neptune_orbit = Orbit("Neptune orbit", 29.912, 0x3768d3, sun,   cam)
 
 	rocket = Rocket("Rocket", 0, 0, 0, 0, ROCKET_MASS + INIT_FUEL_MASS, ROCKET_HEIGHT // 2, 0x999999, cam) # Since the rocket isn't spherical, will just have to approximate the effect of gravity
-
+	
 	space_objects = [ sun, jupiter, saturn, uranus, neptune, earth, venus, mars, mercury, moon, rocket ] # All objects we'll consider which will/may have some impact on gravitational forces acting on the rocket
 	orbit_objects = [ mercury_orbit, venus_orbit, earth_orbit, mars_orbit, jupiter_orbit, saturn_orbit, uranus_orbit, neptune_orbit ] # TODO: add moon_orbit
 
@@ -331,7 +330,14 @@ def simulate(delta_t_ms, total_ms, so_list, cam):
 	#cam.goto(earth.pos)
 	cam.goto(sun.pos)
 
+def draw_stats(window, font):
+	dist = font.render(f"Distance: {earth.dist_to(sun) // 1000} kMs" , True, BLUE)
+	days = font.render(f"Days Elapsed : {days} days" , True, BLUE)
+	window.blit(dist, (20, 20))
+
 def run():
+	pg.init()
+	font = pg.font.SysFont(None, 24)
 	camera = Camera()
 	window = pg.display.set_mode((INIT_WIN_WIDTH, INIT_WIN_HEIGHT), pg.RESIZABLE)
 	pg.display.set_caption("Slingshot Simulation")
@@ -349,6 +355,8 @@ def run():
 			orbit.draw()
 		for so in space_objects:
 			so.draw()
+
+		draw_stats(window, font)
 
 		if camera.zoom < 10: # Zoom in initially
 			camera.zoom_by(1.01)
