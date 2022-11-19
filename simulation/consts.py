@@ -35,3 +35,7 @@ ORBIT_WIDTH = 1
 # Colours
 ORBIT_DARKEN = 0.6
 BLACK = 0x000000
+
+# Time
+START_YEAR = 2030
+MONTH_NAMES = [ "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" ]
