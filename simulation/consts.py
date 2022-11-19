@@ -5,6 +5,7 @@ DEBUG = 0
 ROCKET_MASS = 1e4    # In kilograms
 ROCKET_HEIGHT = 150  # In meters
 INIT_FUEL_MASS = 1e4 # In kilograms
+CURRENT_FUEL = INIT_FUEL_MASS
 FUEL_PER_SEC = 5     # In kilograms/sec
 
 # Constants

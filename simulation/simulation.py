@@ -306,6 +306,26 @@ class Text(object):
 			self.pos[1] += h
 		self.window.blit(img, pos)
 
+class GUI(object):
+	def __init__(self, window=None, font=None, pos=[ 20, 20 ], size=[20, 20], colour=0xffffff, border=True):
+		self.window = window
+		self.pos = pos
+		self.size = size
+		self.colour = hex_to_rgb(colour)
+		self.border = border
+	def draw(self):
+		w, h = pg.display.get_surface().get_size()
+		if self.pos[0] < 0:
+			self.pos[0] += w
+		if self.pos[1] < 0:
+			self.pos[1] += h
+
+		if self.border:
+			pg.draw.rect(pg.display.get_surface(), self.colour, pg.Rect(self.pos[0], self.pos[1], self.size[0], self.size[1]),5)
+		else:
+			pg.draw.rect(pg.display.get_surface(), self.colour, pg.Rect(self.pos[0], self.pos[1], self.size[0], self.size[1]))
+		
+
 
 def moon_update_pos(time, accel=[0,0]):
 	moon.angle_from_earth += time * 360 / (27.3 * SECS_IN_A_DAY)
@@ -321,7 +341,16 @@ def init_objects(cam, win, font):
 	init_space_objects(cam)
 	init_orbit_objects(cam)
 	init_text_objects(win, font)
-	draw_objects = [ orbit_objects, space_objects, text_objects ]
+	init_gui_objects()
+	draw_objects = [ orbit_objects, space_objects, text_objects, gui_objects ]
+
+
+def init_gui_objects():
+    global fuel_bar, gui_objects, fuel_inner
+    fuel_bar = GUI(pos=[ 20, 80 ], size=[50, 500])
+    fuel_inner = GUI(pos=[ 20, 80 ], size=[50, 500], border=False)
+    gui_objects = [fuel_bar, fuel_inner]
+    
 
 def init_space_objects(cam):
 	global space_objects, sun, mercury, venus, earth, moon, mars, jupiter, saturn, uranus, neptune, rocket
@@ -369,12 +398,13 @@ def init_orbit_objects(cam):
 	orbit_objects = [ mercury_orbit, venus_orbit, earth_orbit, moon_orbit, mars_orbit, jupiter_orbit, saturn_orbit, uranus_orbit, neptune_orbit ]
 
 def init_text_objects(win, font):
-	global text_objects, year_and_month_text, fps_text, distance
+	global text_objects, year_and_month_text, fps_text, distance, fuel
 	year_and_month_text = Text("Year Month", win, font, [-100, 20], 0xdddddd)
 	fps_text = Text("FPS", win, font, [-40, -20], 0xdddddd)
-	distance = Text(f"Distance: {earth.dist_to(sun) // 1000} KMs", win, font, [20, 20], 0xdddddd)
+	distance = Text(f"Distance", win, font, [20, 20], 0xdddddd)
+	fuel = Text("Fuel", win, font, [20, 55], 0xdddddd)
 
-	text_objects = [ year_and_month_text, fps_text, distance ]
+	text_objects = [ year_and_month_text, fps_text, distance, fuel ]
 
 
 # Simulation
@@ -406,10 +436,7 @@ def simulate(delta_t_ms, total_ms, so_list, cam):
 
 
 def run_presentation():
-	pg.init()
-	font = pg.font.SysFont(None, 24)
-
-
+	global CURRENT_FUEL
 	pg.init()
 	font = pg.font.SysFont(None, 24)
 	camera = Camera()
@@ -436,6 +463,12 @@ def run_presentation():
 		year_and_month_text.text = f"{get_year(years_passed)} {get_month(years_passed)}"
 		distance.text = f"Distance: {earth.dist_to(sun) // 1000} KMs"
 		fps_text.text = str(round(1000 / delta_t_ms))
+
+		fuel_percent = CURRENT_FUEL/INIT_FUEL_MASS 
+		fuel.text = f"Fuel: {CURRENT_FUEL} KG          {fuel_percent* 100:.2f}%"
+		fuel_inner.size = [50, 500 * fuel_percent]
+		fuel_inner.pos = [ 20,  -220 - 500 * fuel_percent]
+		CURRENT_FUEL -= FUEL_PER_SEC * 1
 
 		for obj_list in draw_objects:
 			for elem in obj_list:
