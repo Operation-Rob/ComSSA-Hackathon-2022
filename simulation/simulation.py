@@ -334,11 +334,12 @@ def init_orbit_objects(cam):
 	orbit_objects = [ mercury_orbit, venus_orbit, earth_orbit, moon_orbit, mars_orbit, jupiter_orbit, saturn_orbit, uranus_orbit, neptune_orbit ]
 
 def init_text_objects(win, font):
-	global text_objects, year_and_month_text, fps_text
-	year_and_month_text = Text("Year Month", win, font, [ -100, 20 ], 0xdddddd)
-	fps_text = Text("FPS", win, font, [-40, -20 ], 0xdddddd)
+	global text_objects, year_and_month_text, fps_text, distance
+	year_and_month_text = Text("Year Month", win, font, [-100, 20], 0xdddddd)
+	fps_text = Text("FPS", win, font, [-40, -20], 0xdddddd)
+	distance = Text(f"Distance: {earth.dist_to(sun) // 1000} KMs", win, font, [20, 20], 0xdddddd)
 
-	text_objects = [ year_and_month_text, fps_text ]
+	text_objects = [ year_and_month_text, fps_text, distance ]
 
 
 # Simulation
@@ -369,17 +370,12 @@ def simulate(delta_t_ms, total_ms, so_list, cam):
 		rocket.update_mass(secs_passed / ITERATIONS_PER_FRAME) # Update rocket's fuel
 	
 	year_and_month_text.text = f"{get_year(years_passed)} {get_month(years_passed)}"
-
+	distance.text = f"Distance: {earth.dist_to(sun) // 1000} KMs"
 def run_presentation():
 	pg.init()
 	font = pg.font.SysFont(None, 24)
 
-def draw_stats(window, font):
-	dist = font.render(f"Distance: {earth.dist_to(sun) // 1000} kMs" , True, BLUE)
-	days = font.render(f"Days Elapsed : {days} days" , True, BLUE)
-	window.blit(dist, (20, 20))
 
-def run():
 	pg.init()
 	font = pg.font.SysFont(None, 24)
 	camera = Camera()
@@ -402,8 +398,6 @@ def run():
 		for obj_list in draw_objects:
 			for elem in obj_list:
 				elem.draw()
-
-		draw_stats(window, font)
 
 		if camera.zoom < 10000: # Zoom in initially
 			camera.zoom_by(1.01)
