@@ -44,35 +44,7 @@ class Orbit(object):
 		w, h = pg.display.get_surface().get_size()
 		x, y = self.pos_on_screen
 		size = self.size_on_screen
-		count = 0
-		if x <= w and x >= 0 and y <= h and y >= 0: # If the centre is on the screen
-			if x**2 + y**2 >= size**2: # Distance to edge is larger than distance to orbit
-				count += 1
-			if (x - w)**2 + (y - h)**2 >= size**2:
-				count += 1
-			if (x - w)**2 + y**2 >= size**2:
-				count += 1
-			if x**2 + (y - h)**2 >= size**2:
-				count += 1
-			if count != 0:
-				return True
-			return False
-		else:
-			if x**2 + y**2 <= size**2: # Distance to edge is larger than distance to orbit
-				count += 1
-			if (x - w)**2 + (y - h)**2 <= size**2:
-				count += 1
-			if (x - w)**2 + y**2 <= size**2:
-				count += 1
-			if x**2 + (y - h)**2 <= size**2:
-				count += 1
-			if count % 4 != 0:
-				return True
-			if x >= 0 and x <= w and (abs(y - h) <= size or abs(y) <= size):
-				return True
-			if y >= 0 and y <= h and (abs(x - w) <= size or abs(x) <= size):
-				return True
-			return False
+		return orbit_on_screen(x, y, w, h, size)
 
 			
 	@property
