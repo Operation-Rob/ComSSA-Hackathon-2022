@@ -2,23 +2,21 @@ DEBUG = 0
 
 # Awaiting data from Conor/Jack
 # Constants relating to the logistics
-ROCKET_MASS = 1e4    # In kilograms
-ROCKET_HEIGHT = 150  # In meters
-INIT_FUEL_MASS = 1e4 # In kilograms
-CURRENT_FUEL = INIT_FUEL_MASS
-FUEL_PER_SEC = 5     # In kilograms/sec
+ROCKET_MASS = 3.8e6    # In kilograms
+ROCKET_HEIGHT = 120    # In meters
+INIT_FUEL_MASS = 590e3 # In kilograms
 
 # Constants
 G = 6.674e-11        # Gravitational constant
 AU = 149597870700    # Astronomical unit in meters
 SECS_IN_A_DAY = 60*60*24
-DIST_THRESHOLD = 1e5 # No two SpaceObjects should be closer than this to each other (hopefully)
+DIST_THRESHOLD = 1e3 # No two SpaceObjects should be closer than this to each other (hopefully)
 SUN_M = 1.99e30      # Mass of sun (kg)
 
 # Animation things
-FPS = 60                   # Frames per second of the animation
+FPS = 60                 # Frames per second of the animation
 ITERATIONS_PER_FRAME = 1 # How many times the physics is calculated per frame. The higher, the more accurate, but the slower the program will run
-DAYS_PER_FRAME = 10        # How many (Earth) days pass in one second of the animation
+DAYS_PER_SEC = 1         # How many (Earth) days pass in one second of the animation
 
 # Deprecated time-animation things
 #DAYS = 10                         # Number of days to simulate
@@ -36,9 +34,6 @@ ORBIT_WIDTH = 1
 # Colours
 ORBIT_DARKEN = 0.6
 BLACK = 0x000000
-RED = (255, 0, 0)
-GREEN = (0, 255, 0)
-BLUE = (0, 0, 255)
 
 # Time
 START_YEAR = 2030

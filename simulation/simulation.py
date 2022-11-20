@@ -1,7 +1,6 @@
 # Assumptions
 # Orbits are circular
 # There's no other objects in solar system which may impact gravitational fields
-# Simulation isn't perfect since velocity and acceleration are really only updated after heaps of seconds
 # Relativity doesn't exist
 
 import pygame as pg
@@ -29,8 +28,12 @@ class Orbit(object):
 		"""
 		w, h = pg.display.get_surface().get_size()
 		factor = min(w, h) * self.cam.zoom / (AU * MAX_AU)
-		return (((factor * (self.centre.pos[0] - self.cam.pos[0]) + w)) // 2, # FIXME: readjust
-		        ((factor * (self.centre.pos[1] - self.cam.pos[1]) + h)) // 2) #
+		x_diff = self.centre.pos[0] - self.cam.pos[0]
+		y_diff = self.centre.pos[1] - self.cam.pos[1]
+		ret = (x_diff * cos(radians(self.cam.angle)) - y_diff * sin(radians(self.cam.angle)), x_diff * sin(radians(self.cam.angle)) + y_diff * cos(radians(self.cam.angle)))
+		x_val = (factor * ret[0] + w) // 2
+		y_val = (factor * ret[1] + h) // 2
+		return (x_val, y_val)
 
 	# Pygame related functions
 	@property
@@ -214,16 +217,20 @@ class SpaceObject(object):
 		"""
 		w, h = pg.display.get_surface().get_size()
 		factor = min(w, h) * self.cam.zoom / (AU * MAX_AU)
-		return (((factor * (self.pos[0] - self.cam.pos[0]) + w)) // 2, # FIXME: readjust
-		        ((factor * (self.pos[1] - self.cam.pos[1]) + h)) // 2) #
+		x_diff = self.pos[0] - self.cam.pos[0]
+		y_diff = self.pos[1] - self.cam.pos[1]
+		ret = (x_diff * cos(radians(self.cam.angle)) - y_diff * sin(radians(self.cam.angle)), x_diff * sin(radians(self.cam.angle)) + y_diff * cos(radians(self.cam.angle)))
+		x_val = (factor * ret[0] + w) // 2
+		y_val = (factor * ret[1] + h) // 2
+		return (x_val, y_val)
 
 	@property
 	def on_screen(self):
 		w, h = pg.display.get_surface().get_size()
-		return self.pos_on_screen[0] <= w and self.pos_on_screen[0] >= 0 and self.pos_on_screen[1] <= h and self.pos_on_screen[1] >= 0
+		return self.pos_on_screen[0] - self.size_on_screen <= w and self.pos_on_screen[0] + self.size_on_screen >= 0 and self.pos_on_screen[1] - self.size_on_screen <= h and self.pos_on_screen[1] + self.size_on_screen >= 0
 	@property
 	def size_on_screen(self):
-		return (self.cam.zoom * self.radius)**(1/4) // 20 # Just some flimsy calculation to make the sun not incredibly larger than the others. TODO will improve later
+		return max(5, (self.cam.zoom * self.radius)**(1/4) // 20) # Just some flimsy calculation to make the sun not incredibly larger than the others. TODO will improve later
 
 	def draw(self):
 		"""
@@ -238,20 +245,20 @@ class SpaceObject(object):
 class Rocket(SpaceObject):
 	def __init__(self, *args):
 		super().__init__(*args)
+		self.accel_angle = 0
 		
+	"""
 	def fuel_mass(self, time):
-		"""
-		Mass of the fuel after some time
-		"""
 		assert time >= 0
 		return INIT_FUEL_MASS - time * FUEL_PER_SEC # FIXME: do actual function
+	"""
 
 	def total_rocket_mass(self, time):
 		"""
 		Rocket mass and fuel mass after some time
 		"""
 		#assert time >= 0
-		return ROCKET_MASS + self.fuel_mass(time)
+		return ROCKET_MASS #+ self.fuel_mass(time)
 
 	def update_mass(self, time):
 		"""
@@ -277,6 +284,7 @@ class Camera(object):
 		self.angle = rot
 	def rotate(self, rot):
 		self.angle += rot
+		self.angle %= 360
 	def set_zoom(self, zoom):
 		self.zoom = zoom
 	def zoom_by(self, zoom_factor):
@@ -284,6 +292,44 @@ class Camera(object):
 		Zooms in by factor of `zoom_factor`
 		"""
 		self.zoom *= zoom_factor
+
+
+# White dot for showing path of rocket
+class Dot(object):
+	def __init__(self, x, y, cam=None):
+		assert cam is not None
+		self.pos = [ x, y ] # Position relative to the Earth
+		self.cam = cam
+
+	@property
+	def pos_on_screen(self):
+		"""
+		Shifts position of the SpaceObject to somewhere on (or off) the screen
+		"""
+		w, h = pg.display.get_surface().get_size()
+		factor = min(w, h) * self.cam.zoom / (AU * MAX_AU)
+		x_diff = self.pos[0] + earth.pos[0] - self.cam.pos[0]
+		y_diff = self.pos[1] + earth.pos[1] - self.cam.pos[1]
+		ret = (x_diff * cos(radians(self.cam.angle)) - y_diff * sin(radians(self.cam.angle)), x_diff * sin(radians(self.cam.angle)) + y_diff * cos(radians(self.cam.angle)))
+		x_val = (factor * ret[0] + w) // 2
+		y_val = (factor * ret[1] + h) // 2
+		return (x_val, y_val)
+
+	@property
+	def on_screen(self):
+		w, h = pg.display.get_surface().get_size()
+		return self.pos_on_screen[0] - self.size_on_screen <= w and self.pos_on_screen[0] + self.size_on_screen >= 0 and self.pos_on_screen[1] - self.size_on_screen <= h and self.pos_on_screen[1] + self.size_on_screen >= 0
+	@property
+	def size_on_screen(self):
+		return 2
+
+	def draw(self):
+		"""
+		Draws the dot to the PyGame screen
+		"""
+		if self.on_screen:
+			pg.draw.circle(pg.display.get_surface(), 0xff0000, self.pos_on_screen, self.size_on_screen)
+		
 
 
 # Text object for drawing text
@@ -306,28 +352,8 @@ class Text(object):
 			self.pos[1] += h
 		self.window.blit(img, pos)
 
-class GUI(object):
-	def __init__(self, window=None, font=None, pos=[ 20, 20 ], size=[20, 20], colour=0xffffff, border=True):
-		self.window = window
-		self.pos = pos
-		self.size = size
-		self.colour = hex_to_rgb(colour)
-		self.border = border
-	def draw(self):
-		w, h = pg.display.get_surface().get_size()
-		if self.pos[0] < 0:
-			self.pos[0] += w
-		if self.pos[1] < 0:
-			self.pos[1] += h
 
-		if self.border:
-			pg.draw.rect(pg.display.get_surface(), self.colour, pg.Rect(self.pos[0], self.pos[1], self.size[0], self.size[1]),5)
-		else:
-			pg.draw.rect(pg.display.get_surface(), self.colour, pg.Rect(self.pos[0], self.pos[1], self.size[0], self.size[1]))
-		
-
-
-def moon_update_pos(time, accel=[0,0]):
+def moon_update_pos(time, accel=[ 0, 0 ]):
 	moon.angle_from_earth += time * 360 / (27.3 * SECS_IN_A_DAY)
 	r = 384400e3 # 384400 km
 	v = sqrt(G * earth.mass / r) # From both F_g = G(m1m2/r^2) and a = v^2/r
@@ -341,16 +367,7 @@ def init_objects(cam, win, font):
 	init_space_objects(cam)
 	init_orbit_objects(cam)
 	init_text_objects(win, font)
-	init_gui_objects()
-	draw_objects = [ orbit_objects, space_objects, text_objects, gui_objects ]
-
-
-def init_gui_objects():
-    global fuel_bar, gui_objects, fuel_inner
-    fuel_bar = GUI(pos=[ 20, 80 ], size=[50, 500])
-    fuel_inner = GUI(pos=[ 20, 80 ], size=[50, 500], border=False)
-    gui_objects = [fuel_bar, fuel_inner]
-    
+	draw_objects = [ orbit_objects, space_objects, text_objects ]
 
 def init_space_objects(cam):
 	global space_objects, sun, mercury, venus, earth, moon, mars, jupiter, saturn, uranus, neptune, rocket
@@ -364,7 +381,9 @@ def init_space_objects(cam):
 	saturn =  SpaceObject("Saturn",  0,     0,     0,     0,     5.68e26, 6.03e7, 0xe5c97e, cam, 9.836,  angle_from_dhm(3, 52, 37.2),   10755.70)
 	uranus =  SpaceObject("Uranus",  0,     0,     0,     0,     8.68e25, 2.56e7, 0x5d94e2, cam, 19.670, angle_from_dhm(2, 20, 17.0),   30687.15)
 	neptune = SpaceObject("Neptune", 0,     0,     0,     0,     1.02e26, 2.48e7, 0x3768d3, cam, 29.912, angle_from_dhm(1, 48, 6.7),    60190.03)
-	moon =    SpaceObject("Moon",    0,     0,     0,     0,     7.35e22, 1.74e6, 0xd7d7d7, cam, 0,      0,                             1) # Earth's moon, positioned a bit differently
+	moon =    SpaceObject("Moon",    0,     0,     0,     0,     7.35e22, 1.74e6, 0xd7d7d7, cam, 0,      0,                             27.3) # Earth's moon, positioned a bit differently
+
+	earth.rot = 0
 
 	# Manually do moon position
 	if False: # FIXME
@@ -375,11 +394,12 @@ def init_space_objects(cam):
 		moon.vel = [ v * cos(radians((angle + 90) % 360)), v * sin(radians((angle + 90) % 360)) ]
 		moon.impacted_by_gravity = True
 	else:
-		moon.impacted_by_gravity = False
+		moon.impacted_by_gravity = False # Simplify the model by just making the moon rotate the Earth circularly
 		moon.angle_from_earth = 0
 		moon.update_pos = moon_update_pos
 
 	rocket = Rocket("Rocket", 0, 0, 0, 0, ROCKET_MASS + INIT_FUEL_MASS, ROCKET_HEIGHT // 2, 0x999999, cam) # Since the rocket isn't spherical, will just have to approximate the effect of gravity
+	rocket.impacted_by_gravity = False
 	space_objects = [ sun, jupiter, saturn, uranus, neptune, earth, venus, mars, mercury, moon, rocket ] # All objects we'll consider which will/may have some impact on gravitational forces acting on the rocket
 
 def init_orbit_objects(cam):
@@ -398,13 +418,11 @@ def init_orbit_objects(cam):
 	orbit_objects = [ mercury_orbit, venus_orbit, earth_orbit, moon_orbit, mars_orbit, jupiter_orbit, saturn_orbit, uranus_orbit, neptune_orbit ]
 
 def init_text_objects(win, font):
-	global text_objects, year_and_month_text, fps_text, distance, fuel
-	year_and_month_text = Text("Year Month", win, font, [-100, 20], 0xdddddd)
-	fps_text = Text("FPS", win, font, [-40, -20], 0xdddddd)
-	distance = Text(f"Distance", win, font, [20, 20], 0xdddddd)
-	fuel = Text("Fuel", win, font, [20, 55], 0xdddddd)
+	global text_objects, year_and_month_text, fps_text
+	year_and_month_text = Text("Year Month", win, font, [ -100, 20 ], 0xdddddd)
+	fps_text = Text("FPS", win, font, [-40, -20 ], 0xdddddd)
 
-	text_objects = [ year_and_month_text, fps_text, distance, fuel ]
+	text_objects = [ year_and_month_text, fps_text ]
 
 
 # Simulation
@@ -413,17 +431,25 @@ def simulate(delta_t_ms, total_ms, so_list, cam):
 	Make all of the objects accelerate each other
 	"""
 	num_objs = len(so_list)
-	time_passed = delta_t_ms / 1000 * SECS_IN_A_DAY * DAYS_PER_FRAME # (Real-world) time which will pass in this one frame
-	secs_passed = total_ms / 1000 * SECS_IN_A_DAY * DAYS_PER_FRAME   # Total (real-world) seconds which have passed since the start of the program
-	years_passed = secs_passed / SECS_IN_A_DAY / 365                 # Total (real-world) years which have passed since the start of the program
+	time_passed = delta_t_ms / 1000 * SECS_IN_A_DAY * DAYS_PER_SEC # (Real-world) time which will pass in this one frame
+	secs_passed = total_ms / 1000 * SECS_IN_A_DAY * DAYS_PER_SEC   # Total (real-world) seconds which have passed since the start of the program
+	years_passed = secs_passed / SECS_IN_A_DAY / 365               # Total (real-world) years which have passed since the start of the program
 
 	accelerations = [ [ 0, 0 ] ] * num_objs
 
 	# Rather than doing time_passed = delta_t_ms / 1000 * SECS_IN_A_DAY, execute it second-by-second so it's more accurate
 	for iteration_num in range(ITERATIONS_PER_FRAME):
 		for i in range(num_objs):
-			accelerations[i] = so_list[i].net_accel_from(so_list)
-			#accelerations[i] = so_list[i].net_accel_from([ sun ])
+			if so_list[i].name == "Rocket":
+				if rocket.impacted_by_gravity == True:
+					moon.impacted_by_gravity = True
+					accelerations[i] = rocket.net_accel_from([ moon ]) # Since the equation we used assumes there's no external forces, we have to simplify the simulation a little by making the rocket only affected by the gravity: an unavoidable assumption without using like rocket science
+					accelerations[i][0] *= 300000 # Make the effect of gravity stronger to better demonstrate slingshotting
+					accelerations[i][1] *= 300000 # Have to use a large number since the simulation has been slowed down a lot
+					moon.impacted_by_gravity = False
+			else:
+				accelerations[i] = so_list[i].net_accel_from(so_list)
+				#accelerations[i] = so_list[i].net_accel_from([ sun ])
 
 		# Update positions
 		for i in range(num_objs):
@@ -433,19 +459,33 @@ def simulate(delta_t_ms, total_ms, so_list, cam):
 				so_list[i].update_pos(time_passed / ITERATIONS_PER_FRAME, accelerations[i])
 
 		rocket.update_mass(secs_passed / ITERATIONS_PER_FRAME) # Update rocket's fuel
+	
+	earth.rot += (delta_t_ms / 1000) * 360 * DAYS_PER_SEC
+	earth.rot %= 360
+	if rocket.impacted_by_gravity == False:
+		rocket.pos = [ earth.pos[0] + (earth.radius * 4) * cos(radians(-earth.rot)), earth.pos[1] + (earth.radius * 4) * sin(radians(-earth.rot)) ] # Use earth.radius * 4 just to make the rocket seem less close to the Earth in the simulation presentation
 
 
 def run_presentation():
-	global CURRENT_FUEL
+	global DAYS_PER_SEC
 	pg.init()
 	font = pg.font.SysFont(None, 24)
+
 	camera = Camera()
 	window = pg.display.set_mode((INIT_WIN_WIDTH, INIT_WIN_HEIGHT), pg.RESIZABLE)
 	pg.display.set_caption("Slingshot Simulation")
+	clock = pg.time.Clock()
 
 	init_objects(camera, window, font)
 
-	clock = pg.time.Clock()
+	### ANIMATION THINGS ###
+	zoom_speed = 1.005
+	vel_changed = False
+	### ################ ###
+
+	# Tracing path of rocket
+	dots = []
+
 	running = True
 	while running:
 		clock.tick(FPS)
@@ -453,29 +493,43 @@ def run_presentation():
 
 		delta_t_ms = clock.get_time()
 		total_ms = pg.time.get_ticks()
-		years_passed = total_ms / 1000 * DAYS_PER_FRAME / 365
+		years_passed = total_ms / 1000 * DAYS_PER_SEC / 365
 
 		simulate(delta_t_ms, total_ms, space_objects, camera)
 
-		#camera.goto(earth.pos)
-		camera.goto(venus.pos)
+		camera.goto(earth.pos)
 
 		year_and_month_text.text = f"{get_year(years_passed)} {get_month(years_passed)}"
-		distance.text = f"Distance: {earth.dist_to(sun) // 1000} KMs"
 		fps_text.text = str(round(1000 / delta_t_ms))
 
-		fuel_percent = CURRENT_FUEL/INIT_FUEL_MASS 
-		fuel.text = f"Fuel: {CURRENT_FUEL} KG          {fuel_percent* 100:.2f}%"
-		fuel_inner.size = [50, 500 * fuel_percent]
-		fuel_inner.pos = [ 20,  -220 - 500 * fuel_percent]
-		CURRENT_FUEL -= FUEL_PER_SEC * 1
-
+		for dot in dots:
+			dot.draw()
 		for obj_list in draw_objects:
 			for elem in obj_list:
 				elem.draw()
 
-		if camera.zoom < 100: # Zoom in initially
-			camera.zoom_by(1.01)
+		### ANIMATION THINGS ###
+		if total_ms < 8000:
+			pass
+		elif camera.zoom < 10000: # Zoom in initially
+			zoom_speed += 0.0001
+			camera.zoom_by(zoom_speed)
+			if DAYS_PER_SEC > 0.001:
+				DAYS_PER_SEC -= 0.001 # And slow down; we slow down the simulation to make it easier to visually demonstrate how slingshotting works
+		elif DAYS_PER_SEC > 0.001:
+			DAYS_PER_SEC -= 0.01
+		elif DAYS_PER_SEC < 0.001:
+			DAYS_PER_SEC = 0.001
+		elif total_ms < 17000:
+			pass
+		elif vel_changed == False:
+			rocket.vel[0] = (moon.pos[0] - earth.pos[0]) * 0.003
+			rocket.vel[1] = (moon.pos[1] - earth.pos[1]) * 0.003
+			rocket.impacted_by_gravity = True
+			vel_changed = True
+		else:
+			dots.append(Dot(rocket.pos[0] - earth.pos[0], rocket.pos[1] - earth.pos[1], camera))
+		### ################ ###
 
 		pg.display.update()
 
