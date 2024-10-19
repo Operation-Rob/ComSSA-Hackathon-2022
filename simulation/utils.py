@@ -21,7 +21,7 @@ def darken(colour, factor):
 	b *= factor
 	g *= factor
 	r *= factor
-	colour = round(min(r, 256))
+	colour = round(min(r, 256))#hey
 	colour *= 256
 	colour += round(min(g, 256))
 	colour *= 256
